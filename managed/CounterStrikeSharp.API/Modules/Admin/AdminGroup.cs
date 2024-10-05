@@ -1,15 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Text;
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
-
-using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Entities;
-using CounterStrikeSharp.API.Modules.Utils;
 
 namespace CounterStrikeSharp.API.Modules.Admin
 {
@@ -17,6 +8,7 @@ namespace CounterStrikeSharp.API.Modules.Admin
     {
         [JsonPropertyName("groups")] public HashSet<string> Groups { get; init; } = new();
     }
+
     public partial class AdminGroupData
     {
         [JsonPropertyName("flags")] public required HashSet<string> Flags { get; init; }
@@ -24,7 +16,7 @@ namespace CounterStrikeSharp.API.Modules.Admin
         [JsonPropertyName("command_overrides")] public Dictionary<string, bool> CommandOverrides { get; init; } = new();
     }
 
-    public static partial class AdminManager
+    public partial class AdminManager
     {
         private static Dictionary<string, AdminGroupData> Groups = new();
 

@@ -14,35 +14,56 @@
  *  along with CounterStrikeSharp.  If not, see <https://www.gnu.org/licenses/>. *
  */
 
-using System;
-using System.Collections.Generic;
-using System.Reflection.Metadata;
-using System.Runtime.InteropServices;
-using System.Text;
+using System.Reflection;
 
 namespace CounterStrikeSharp.API
 {
+    /// <summary>
+    /// Represents a base class for objects that wrap native (unmanaged) resources.
+    /// </summary>
     public abstract class NativeObject
     {
-        public IntPtr Handle { get; internal set; }
+        /// <summary>
+        /// Gets the native handle associated with this object.
+        /// </summary>
+        public IntPtr Handle { get; protected set; }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="NativeObject"/> class.
+        /// </summary>
+        /// <param name="pointer">The native handle to associate with this object.</param>
         protected NativeObject(IntPtr pointer)
         {
             Handle = pointer;
         }
-        
+
         /// <summary>
-        /// Returns a new instance of the specified type using the pointer from the passed in object.
+        /// Creates a new instance of the specified type <typeparamref name="T"/>,
+        /// using the current object's handle to initialize the new instance.
         /// </summary>
         /// <remarks>
-        /// Useful for creating a new instance of a class that inherits from NativeObject.
-        /// e.g. <code>var weaponServices = playerWeaponServices.As&lt;CCSPlayer_WeaponServices&gt;();</code>
+        /// Useful for creating a new instance of a class that inherits from 
+        /// <see cref="NativeObject"/> and shares the same native handle.
+        /// For example: 
+        /// <code>
+        /// var weaponServices = playerWeaponServices.As&lt;CCSPlayer_WeaponServices&gt;();
+        /// </code>
         /// </remarks>
-        /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
+        /// <typeparam name="T">The type to create. Must inherit from <see cref="NativeObject"/>.</typeparam>
+        /// <returns>A new instance of <typeparamref name="T"/>.</returns>
         public T As<T>() where T : NativeObject
         {
-            return (T)Activator.CreateInstance(typeof(T), this.Handle);
+            // Check if handle is null
+            if (Handle == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("Cannot create a derived instance with a null or invalid handle.");
+            }
+
+            // Return instance with binding flags to ensure expected behavior
+            return (T)Activator.CreateInstance(typeof(T),
+                BindingFlags.NonPublic |
+                BindingFlags.Instance, null, [Handle], null
+            )!;
         }
     }
 }

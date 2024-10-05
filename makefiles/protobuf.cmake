@@ -17,6 +17,8 @@ set(PROTO_TARGETS
     ${PROJECT_SOURCE_DIR}/libraries/Protobufs/csgo/te.proto
 )
 
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 if(UNIX)
     set(PROTOC_EXECUTABLE ${PROJECT_SOURCE_DIR}/libraries/hl2sdk-cs2/devtools/bin/linux/protoc)
 elseif(WIN32)

@@ -1,34 +1,40 @@
 using CounterStrikeSharp.API.Modules.Commands;
-using CounterStrikeSharp.API.Modules.Utils;
-using System.Linq;
 using System.Reflection;
 using CounterStrikeSharp.API.Core.Commands;
-using CounterStrikeSharp.API.Core.Logging;
 using Microsoft.Extensions.Logging;
+using CounterStrikeSharp.API.Core.Interfaces;
+using System.Text.Json;
 
 namespace CounterStrikeSharp.API.Modules.Admin
 {
-    public static partial class AdminManager
+    public partial class AdminManager : IAdminManager
     {
-        public static ICommandManager CommandManagerProvider { get; internal set; } = null!;
+        private readonly ICommandManager _commandManager;
+        private readonly ILogger<AdminManager> _logger;
 
-        public static void AddCommands()
+        public AdminManager(ICommandManager commandManager, ILogger<AdminManager> logger)
         {
-            CommandManagerProvider.RegisterCommand(new CommandDefinition("css_admins_reload", "Reloads the admin file.",
+            _commandManager = commandManager;
+            _logger = logger;
+        }
+
+        public void AddCommands()
+        {
+            _commandManager.RegisterCommand(new CommandDefinition("css_admins_reload", "Reloads the admin file.",
                 ReloadAdminsCommand));
-            CommandManagerProvider.RegisterCommand(new CommandDefinition("css_admins_list",
+            _commandManager.RegisterCommand(new CommandDefinition("css_admins_list",
                 "List admins and their flags.", ListAdminsCommand));
-            CommandManagerProvider.RegisterCommand(new CommandDefinition("css_groups_reload",
+            _commandManager.RegisterCommand(new CommandDefinition("css_groups_reload",
                 "Reloads the admin groups file.", ReloadAdminGroupsCommand));
-            CommandManagerProvider.RegisterCommand(new CommandDefinition("css_groups_list",
+            _commandManager.RegisterCommand(new CommandDefinition("css_groups_list",
                 "List admin groups and their flags.", ListAdminGroupsCommand));
-            CommandManagerProvider.RegisterCommand(new CommandDefinition("css_overrides_reload",
+            _commandManager.RegisterCommand(new CommandDefinition("css_overrides_reload",
                 "Reloads the admin command overrides file.", ReloadAdminOverridesCommand));
-            CommandManagerProvider.RegisterCommand(new CommandDefinition("css_overrides_list",
+            _commandManager.RegisterCommand(new CommandDefinition("css_overrides_list",
                 "List admin command overrides and their flags.", ListAdminOverridesCommand));
         }
 
-        public static void MergeGroupPermsIntoAdmins()
+        public void MergeGroupPermsIntoAdmins()
         {
             foreach (var (steamID, adminDef) in Admins)
             {
@@ -36,14 +42,60 @@ namespace CounterStrikeSharp.API.Modules.Admin
             }
         }
 
+        public void LoadCommandOverrides(string overridePath)
+        {
+            try
+            {
+                if (!File.Exists(overridePath))
+                {
+                    Console.WriteLine("Admin command overrides file not found. Skipping admin command overrides load.");
+                    return;
+                }
+
+                var overridesFromFile = JsonSerializer.Deserialize<Dictionary<string, CommandData>>
+                    (File.ReadAllText(overridePath), new JsonSerializerOptions() { ReadCommentHandling = JsonCommentHandling.Skip });
+                if (overridesFromFile == null) { throw new FileNotFoundException(); }
+                foreach (var (command, overrideDef) in overridesFromFile)
+                {
+                    if (CommandOverrides.ContainsKey(command))
+                    {
+                        CommandOverrides[command].Flags.UnionWith(overrideDef.Flags);
+                    }
+                    else
+                    {
+                        CommandOverrides.Add(command, overrideDef);
+                    }
+                }
+
+                Console.WriteLine($"Loaded {CommandOverrides.Count} admin command overrides.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to load admin command overrides: {ex}");
+            }
+        }
+
+
+
+
         [RequiresPermissions(permissions: "@css/generic")]
         [CommandHelper(whoCanExecute: CommandUsage.CLIENT_AND_SERVER)]
         private static void ReloadAdminsCommand(CCSPlayerController? player, CommandInfo command)
         {
             Admins.Clear();
             var rootDir = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory.Parent;
-            LoadAdminData(Path.Combine(rootDir.FullName, "configs", "admins.json"));
-            MergeGroupPermsIntoAdmins();
+
+            try
+            {
+                LoadAdminData(Path.Combine(rootDir.FullName, "configs", "admins.json"));
+                MergeGroupPermsIntoAdmins();
+                _logger.LogInformation("Admin data reloaded successfully."); // Log success
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reload admin data."); // Log error
+                // ... (Handle the exception or notify the user) ...
+            }
         }
 
         [RequiresPermissions(permissions: "@css/generic")]

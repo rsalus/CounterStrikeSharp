@@ -1,143 +1,72 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using CounterStrikeSharp.API.Core.Hosting;
+using CounterStrikeSharp.API.Core.Interfaces;
+using CounterStrikeSharp.API.Core.Model;
 using Microsoft.Extensions.Logging;
 
-namespace CounterStrikeSharp.API.Core;
-
-public class LoadedGameData
+namespace CounterStrikeSharp.API.Core
 {
-    [JsonPropertyName("signatures")] public Signatures? Signatures { get; set; }
-    [JsonPropertyName("offsets")] public Offsets? Offsets { get; set; }
-}
-
-public class Signatures
-{
-    [JsonPropertyName("library")] public string Library { get; set; }
-
-    [JsonPropertyName("windows")] public string Windows { get; set; }
-
-    [JsonPropertyName("linux")] public string Linux { get; set; }
-}
-
-public class Offsets
-{
-    [JsonPropertyName("windows")] public int Windows { get; set; }
-
-    [JsonPropertyName("linux")] public int Linux { get; set; }
-}
-
-public sealed class GameDataProvider : IStartupService
-{
-    private readonly string _gameDataDirectoryPath;
-    public Dictionary<string,LoadedGameData> Methods;
-    private readonly ILogger<GameDataProvider> _logger;
-
-    public GameDataProvider(IScriptHostConfiguration scriptHostConfiguration, ILogger<GameDataProvider> logger)
+    public sealed class GameData : IGameData, IStartupService
     {
-        _logger = logger;
-        _gameDataDirectoryPath = scriptHostConfiguration.GameDataPath;
-    }
-    
-    public void Load()
-    {
-        try
+        private readonly string _gameDataDirectoryPath;
+        private readonly Dictionary<string, GameDataEntry> _entries = [];
+        private readonly ILogger<GameData> _logger;
+
+        public GameData(IScriptHostConfiguration scriptHostConfiguration, ILogger<GameData> logger)
         {
-            Methods = new Dictionary<string, LoadedGameData>();
+            _logger = logger;
+            _gameDataDirectoryPath = scriptHostConfiguration.GameDataPath;
+        }
 
-            foreach (string filePath in Directory.EnumerateFiles(_gameDataDirectoryPath, "*.json"))
+        public void Load()
+        {
+            try
             {
-                string jsonContent = File.ReadAllText(filePath);
-                Dictionary<string, LoadedGameData> loadedMethods = JsonSerializer.Deserialize<Dictionary<string, LoadedGameData>>(jsonContent)!;
+                // LINQ pipeline for processing so we
+                // avoid intermediate object allocations
+                var newEntries = Directory.EnumerateFiles(_gameDataDirectoryPath, "*.json")
+                    .Select(filePath => (filePath, json: File.ReadAllText(filePath)))
+                    .Select(file => (file.filePath, loadedMethods: JsonSerializer.Deserialize<Dictionary<string, LoadedGameData>>(file.json)))
+                    .Where(file => file.loadedMethods is not null && file.loadedMethods.Any())
+                    .SelectMany(file => file.loadedMethods!
+                        .Select(kvp => new KeyValuePair<string, GameDataEntry>(
+                            kvp.Key,
+                            new GameDataEntry.Builder()
+                                .WithSignatures(kvp.Value.Signatures!)
+                                .WithOffsets(kvp.Value.Offsets!)
+                                .Build()
+                        ))
+                    )
+                    .GroupBy(e => e.Key)
+                    .ToDictionary(g => g.Key, g => g.First().Value);
 
-                foreach (KeyValuePair<string, LoadedGameData> loadedMethod in loadedMethods)
+                // Add kvp to internal dictionary
+                foreach (var (key, newEntry) in newEntries)
                 {
-                    if (Methods.ContainsKey(loadedMethod.Key))
+                    if (!_entries.TryAdd(key, newEntry))
                     {
-                        _logger.LogWarning("GameData Method \"{Key}\" loaded a duplicate entry from {filePath}.", loadedMethod.Key, filePath);
+                        _logger.LogWarning("GameData Method \"{Key}\" loaded a duplicate entry from {filePath}.", key, newEntry);
                     }
-                    
-                    Methods[loadedMethod.Key] = loadedMethod.Value;
-                }
-                
-                if (loadedMethods != null)
-                {
-                    _logger.LogInformation("Successfully loaded {Count} game data entries from {Path}", loadedMethods.Count, filePath);
-                }
-                else
-                {
-                    _logger.LogWarning("Unable to load game data entries from {Path}, game data file is empty", filePath);
                 }
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load game data");
+            }
         }
-        catch (Exception ex)
+
+        // This is mostly a passthrough with logging decorations
+        // but is still useful for establishing a contract
+        public GameDataEntry GetEntry(string key)
         {
-            _logger.LogError(ex, "Failed to load game data");
+            _logger.LogDebug("Getting game data entry: {Key}", key);
+
+            if (!_entries.TryGetValue(key, out GameDataEntry? value))
+            {
+                throw new ArgumentException($"Game data entry not found for key: {key}");
+            }
+
+            return value;
         }
-    }
-} 
-
-public static class GameData
-{
-    internal static GameDataProvider GameDataProvider { get; set; } = null!;
-    
-    public static string GetSignature(string key)
-    {
-        Application.Instance.Logger.LogDebug("Getting signature: {Key}", key);
-        if (!GameDataProvider.Methods.ContainsKey(key))
-        {
-            throw new ArgumentException($"Method {key} not found in gamedata.json");
-        }
-
-        var methodMetadata = GameDataProvider.Methods[key];
-        if (methodMetadata.Signatures == null)
-        {
-            throw new InvalidOperationException($"No signatures found for {key} in gamedata.json");
-        }
-
-        string signature;
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            signature = methodMetadata.Signatures?.Linux ?? throw new InvalidOperationException($"No Linux signature for {key} in gamedata.json");
-        }
-        else
-        {
-            signature = methodMetadata.Signatures?.Windows ?? throw new InvalidOperationException($"No Windows signature for {key} in gamedata.json");
-        }
-
-        return signature;
-    }
-
-    public static int GetOffset(string key)
-    {
-        if (!GameDataProvider.Methods.ContainsKey(key))
-        {
-            throw new Exception($"Method {key} not found in gamedata.json");
-        }
-
-        var methodMetadata = GameDataProvider.Methods[key];
-
-        if (methodMetadata.Offsets == null)
-        {
-            throw new Exception($"No offsets found for {key} in gamedata.json");
-        }
-
-        int offset;
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            offset = methodMetadata.Offsets?.Linux ?? throw new InvalidOperationException($"No Linux offset for {key} in gamedata.json");
-        }
-        else
-        {
-            offset = methodMetadata.Offsets?.Windows ?? throw new InvalidOperationException($"No Windows offset for {key} in gamedata.json");
-        }
-
-        return offset;
     }
 }

@@ -1,11 +1,5 @@
-﻿using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Entities;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using System.Text.Json;
-using System.Linq;
 
 namespace CounterStrikeSharp.API.Modules.Admin
 {
@@ -17,7 +11,7 @@ namespace CounterStrikeSharp.API.Modules.Admin
         [JsonPropertyName("check_type")] public required string CheckType { get; init; }
     }
 
-    public static partial class AdminManager
+    public partial class AdminManager
     {
         private static Dictionary<string, CommandData> CommandOverrides = new(StringComparer.InvariantCultureIgnoreCase);
         public static void LoadCommandOverrides(string overridePath)

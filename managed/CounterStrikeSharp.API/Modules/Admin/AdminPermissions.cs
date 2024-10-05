@@ -1,16 +1,8 @@
-﻿using System;
-using System.IO;
-using System.Collections.Generic;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using System.Text.Json;
 using CounterStrikeSharp.API.Modules.Entities;
-using System.Linq;
 using CounterStrikeSharp.API.Core.Logging;
 using Microsoft.Extensions.Logging;
-using System.Text.Json.Nodes;
-using System.Numerics;
-using CounterStrikeSharp.API.Modules.Utils;
-using System.Diagnostics.Eventing.Reader;
 
 namespace CounterStrikeSharp.API.Modules.Admin
 {
@@ -109,7 +101,7 @@ namespace CounterStrikeSharp.API.Modules.Admin
         }
     }
 
-    public static partial class AdminManager
+    public partial class AdminManager
     {
         private static Dictionary<SteamID, AdminData> Admins = new();
         
