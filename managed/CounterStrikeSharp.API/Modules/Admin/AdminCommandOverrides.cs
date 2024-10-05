@@ -11,6 +11,7 @@ namespace CounterStrikeSharp.API.Modules.Admin
         [JsonPropertyName("check_type")] public required string CheckType { get; init; }
     }
 
+    // Need to break up this partial class
     public partial class AdminManager
     {
         private static Dictionary<string, CommandData> CommandOverrides = new(StringComparer.InvariantCultureIgnoreCase);
